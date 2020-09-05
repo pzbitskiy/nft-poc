@@ -5,3 +5,8 @@ const lastTokenKey = "t"
 
 const tokensPerShard = 60
 const maxShards = 60
+
+const opCreate = "create"
+const opShardCreate = "shard_create"
+const opMint = "mint"
+const opTransfer = "transfer"

@@ -1,3 +1,4 @@
+import stdlib.const
 import common
 
 function getShardKey(shardNum) {
@@ -13,7 +14,7 @@ function ensureShardByToken(tokenIn, targetShardStrIn) {
 
 function ensureShardAppByToken(tokenIn, targetShardStrIn) {
     let shardKey = getShardKey(targetShardStrIn)
-    let targetShardAppId = app_global_get(shardKey)
+    let targetShardAppId = apps[0].get(shardKey)
     // ensure the second txn is shard app call
     if targetShardAppId == gtxn[1].ApplicationID && tokenIn == gtxn[1].ApplicationArgs[1] && txn.ApplicationArgs[0] == gtxn[1].ApplicationArgs[0] {
         // TODO: check txn.ForeignApps[0] == targetShardAppId
@@ -25,15 +26,15 @@ function ensureShardAppByToken(tokenIn, targetShardStrIn) {
 function approval() {
     if txn.ApplicationID == 0 {
         // this must be a standalone transaction
-        if global.GroupSize != 1 || txn.NumAppArgs != 1 || txn.ApplicationArgs[0] != "create" {
+        if global.GroupSize != 1 || txn.NumAppArgs != 1 || txn.ApplicationArgs[0] != opCreate {
             return 0
         }
-        app_global_put(creatorKey, txn.Sender)
-        app_global_put(appIdKey, global.CurrentApplicationID)
+        apps[0].put(creatorKey, txn.Sender)
+        apps[0].put(appIdKey, global.CurrentApplicationID)
         return 1
     }
 
-    if txn.OnCompletion != 0 {
+    if txn.OnCompletion != AcNoOp {
         return 0
     }
 
@@ -42,36 +43,36 @@ function approval() {
         return 0
     }
 
-    if txn.ApplicationArgs[0] == "shard_create" {
-        let creator = app_global_get(creatorKey)
+    if txn.ApplicationArgs[0] == opShardCreate {
+        let creator = apps[0].get(creatorKey)
         if txn.Sender != creator || global.GroupSize != 1 {
             return 0
         }
 
         let createdShard = txn.ApplicationArgs[2]
         let shard = btoi(createdShard)
-        let lastShard, exist = app_global_get_ex(0, lastShardKey)
+        let lastShard, exist = apps[0].getEx(lastShardKey)
         if !exist && shard != 0 || exist && lastShard != shard + 1 {
             return 0;
         }
 
         // save last shard
-        app_global_put(lastShardKey, shard)
+        apps[0].put(lastShardKey, shard)
 
         // save sharding app idx
         let shardKey = getShardKey(createdShard)
         let shardAppId = btoi(txn.ApplicationArgs[1])
-        app_global_put(shardKey, shardAppId)
+        apps[0].put(shardKey, shardAppId)
         return 1
     }
 
-    if txn.ApplicationArgs[0] == "mint" {
+    if txn.ApplicationArgs[0] == opMint {
         // must be first in a group
         if global.GroupSize != 2 || txn.GroupIndex != 0 {
             return 0
         }
 
-        let creator = app_global_get(creatorKey)
+        let creator = apps[0].get(creatorKey)
         if txn.Sender != creator || gtxn[1].Sender != creator {
             return 0
         }
@@ -86,15 +87,15 @@ function approval() {
             return 0
         }
 
-        const foreignAppIdx = 0
-        let value, exist = app_global_get_ex(foreignAppIdx, tokenIn)
+        const thisAppIdx = 0
+        let value, exist = apps[thisAppIdx].getEx(tokenIn)
         if exist {
             return 0
         }
         return 1
     }
 
-    if txn.ApplicationArgs[0] == "transfer" {
+    if txn.ApplicationArgs[0] == opTransfer {
         // must be first in a group
         if global.GroupSize != 2 || txn.GroupIndex != 0 {
             return 0
@@ -110,17 +111,17 @@ function approval() {
             return 0
         }
 
-        const foreignAppIdx = 0
-        let value, exist = app_global_get_ex(foreignAppIdx, tokenIn)
+        const thisAppIdx = 0
+        let value, exist = apps[thisAppIdx].getEx(tokenIn)
         if !exist {
             return 0
         }
-        let addr = substring3(value, 32, 64)
+        let addr = substring(value, 32, 64)
         if addr == txn.Sender {
             return 1
         }
         if addr == global.ZeroAddress {
-            let creator = app_global_get(creatorKey)
+            let creator = apps[0].get(creatorKey)
             if txn.Sender == creator {
                 return 1
             }
